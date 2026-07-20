@@ -1,8 +1,11 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import api from '../services/api'
 import type { Alert } from '../types'
 
 export default function Alerts() {
+  const [severityFilter, setSeverityFilter] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
   const queryClient = useQueryClient()
 
   const { data: alerts = [], isLoading } = useQuery<Alert[]>({
@@ -16,36 +19,100 @@ export default function Alerts() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] }),
   })
 
+  const filtered = alerts.filter(a => {
+    if (severityFilter && a.severity !== severityFilter) return false
+    if (statusFilter && a.status !== statusFilter) return false
+    return true
+  })
+
   const open = alerts.filter(a => a.status === 'open').length
   const critical = alerts.filter(a => a.severity === 'critical').length
 
-  if (isLoading) return <div className="text-gray-400">Loading...</div>
+  if (isLoading) return (
+    <div className="flex items-center justify-center h-64">
+      <div className="text-gray-400">Loading alerts...</div>
+    </div>
+  )
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-white">Alerts</h1>
-        <p className="text-gray-400 mt-1">{alerts.length} total — {open} open — {critical} critical</p>
+        <p className="text-gray-400 mt-1">
+          {filtered.length} of {alerts.length} alerts — {open} open — {critical} critical
+        </p>
       </div>
 
+      {/* Summary Cards */}
+      <div className="grid grid-cols-4 gap-4">
+        {[
+          { label: 'Open', value: alerts.filter(a => a.status === 'open').length, color: 'text-yellow-400' },
+          { label: 'Critical', value: alerts.filter(a => a.severity === 'critical').length, color: 'text-red-400' },
+          { label: 'Resolved', value: alerts.filter(a => a.status === 'resolved').length, color: 'text-green-400' },
+          { label: 'Escalated', value: alerts.filter(a => a.status === 'escalated').length, color: 'text-orange-400' },
+        ].map(s => (
+          <div key={s.label} className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+            <p className="text-gray-400 text-sm">{s.label}</p>
+            <p className={`text-2xl font-bold mt-1 ${s.color}`}>{s.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-4">
+        <select
+          value={severityFilter}
+          onChange={e => setSeverityFilter(e.target.value)}
+          className="bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        >
+          <option value="">All severities</option>
+          <option value="critical">Critical</option>
+          <option value="high">High</option>
+          <option value="medium">Medium</option>
+          <option value="low">Low</option>
+        </select>
+        <select
+          value={statusFilter}
+          onChange={e => setStatusFilter(e.target.value)}
+          className="bg-gray-900 border border-gray-700 rounded-lg px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+        >
+          <option value="">All statuses</option>
+          <option value="open">Open</option>
+          <option value="in_review">In Review</option>
+          <option value="escalated">Escalated</option>
+          <option value="resolved">Resolved</option>
+          <option value="false_positive">False Positive</option>
+        </select>
+        {(severityFilter || statusFilter) && (
+          <button
+            onClick={() => { setSeverityFilter(''); setStatusFilter('') }}
+            className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded-lg text-sm transition-colors"
+          >
+            Clear filters
+          </button>
+        )}
+      </div>
+
+      {/* Alerts List */}
       <div className="space-y-3">
-        {alerts.length === 0 && (
+        {filtered.length === 0 && (
           <div className="text-center py-12 text-gray-500 bg-gray-900 rounded-xl border border-gray-800">
-            No alerts found
+            {severityFilter || statusFilter ? 'No alerts match your filters' : 'No alerts found'}
           </div>
         )}
-        {alerts.map(a => (
+        {filtered.map(a => (
           <div key={a.id} className={`bg-gray-900 rounded-xl border p-5 ${
             a.severity === 'critical' ? 'border-red-800' :
             a.severity === 'high' ? 'border-orange-800' :
+            a.severity === 'medium' ? 'border-yellow-800' :
             'border-gray-800'
           }`}>
             <div className="flex items-start justify-between">
-              <div className="space-y-2">
-                <div className="flex items-center gap-3">
+              <div className="space-y-2 flex-1">
+                <div className="flex items-center gap-3 flex-wrap">
                   <SeverityBadge severity={a.severity} />
                   <StatusBadge status={a.status} />
-                  <span className="text-gray-400 text-xs font-mono">{a.id.slice(0, 8)}...</span>
+                  <span className="text-gray-500 text-xs font-mono">{a.id.slice(0, 8)}...</span>
                 </div>
                 <p className="text-white font-medium">
                   {a.rule_triggered.replace(/_/g, ' ').toUpperCase()}
@@ -58,25 +125,38 @@ export default function Alerts() {
               </div>
 
               {a.status === 'open' && (
-                <div className="flex gap-2 ml-4">
+                <div className="flex gap-2 ml-4 flex-shrink-0">
                   <button
                     onClick={() => reviewMutation.mutate({ id: a.id, status: 'resolved' })}
-                    className="px-3 py-1.5 bg-green-800 hover:bg-green-700 text-green-200 rounded text-xs font-medium transition-colors"
+                    disabled={reviewMutation.isPending}
+                    className="px-3 py-1.5 bg-green-800 hover:bg-green-700 text-green-200 rounded text-xs font-medium transition-colors disabled:opacity-50"
                   >
                     Resolve
                   </button>
                   <button
                     onClick={() => reviewMutation.mutate({ id: a.id, status: 'false_positive' })}
-                    className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-medium transition-colors"
+                    disabled={reviewMutation.isPending}
+                    className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-medium transition-colors disabled:opacity-50"
                   >
                     False Positive
                   </button>
                   <button
                     onClick={() => reviewMutation.mutate({ id: a.id, status: 'escalated' })}
-                    className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-red-200 rounded text-xs font-medium transition-colors"
+                    disabled={reviewMutation.isPending}
+                    className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-red-200 rounded text-xs font-medium transition-colors disabled:opacity-50"
                   >
                     Escalate
                   </button>
+                </div>
+              )}
+
+              {a.status !== 'open' && (
+                <div className="ml-4 flex-shrink-0">
+                  <span className="text-gray-500 text-xs">
+                    {a.status === 'resolved' ? '✓ Resolved' :
+                     a.status === 'escalated' ? '⬆ Escalated' :
+                     a.status === 'false_positive' ? '✗ False Positive' : ''}
+                  </span>
                 </div>
               )}
             </div>
