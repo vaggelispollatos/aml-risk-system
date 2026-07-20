@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.exceptions import CustomerNotFoundError
 from app.db.models.customer import Customer
 from app.db.models.transaction import Transaction, TransactionStatus, TransactionType
 from app.schemas.transaction import TransactionCreate
@@ -43,7 +44,6 @@ class TransactionService:
         )
         self.db.add(txn)
 
-        # Update customer stats
         customer.total_transactions += 1
         customer.total_volume += data.amount
         customer.last_transaction_at = datetime.utcnow()
@@ -80,7 +80,7 @@ class TransactionService:
     def _get_customer(self, customer_id: str) -> Customer:
         customer = self.db.query(Customer).filter(Customer.id == customer_id).first()
         if not customer:
-            raise ValueError(f"Customer {customer_id} not found")
+            raise CustomerNotFoundError(customer_id)
         return customer
 
     def _build_context(self, customer: Customer, data: TransactionCreate) -> dict:
