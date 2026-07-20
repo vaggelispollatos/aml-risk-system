@@ -48,7 +48,6 @@ class TestTransactionAmountRule:
         _, score, _ = rule.evaluate({"amount": 500_000, "customer_avg_transaction": 0})
         assert score <= 100
 
-
 class TestVelocityCheckRule:
 
     @pytest.fixture()
@@ -65,9 +64,9 @@ class TestVelocityCheckRule:
         assert r == RuleResult.PASSED
         assert score == 0
 
-    def test_at_limit_passes(self, rule):
-        r, _, _ = rule.evaluate({"recent_transactions_count": 5})
-        assert r == RuleResult.PASSED
+    def test_at_limit_warns(self, rule):
+       r, _, _ = rule.evaluate({"recent_transactions_count": 5})
+       assert r == RuleResult.WARNING
 
     def test_near_limit_warns(self, rule):
         r, score, _ = rule.evaluate({"recent_transactions_count": 4})

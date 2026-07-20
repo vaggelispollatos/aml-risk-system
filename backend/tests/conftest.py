@@ -21,8 +21,7 @@ def engine():
     Base.metadata.create_all(bind=eng)
     yield eng
     Base.metadata.drop_all(bind=eng)
-    if os.path.exists("test.db"):
-        os.remove("test.db")
+    eng.dispose()
 
 
 @pytest.fixture()
