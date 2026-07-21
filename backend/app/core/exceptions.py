@@ -35,6 +35,14 @@ class DuplicateEmailError(HTTPException):
         )
 
 
+class ComplianceAssessmentNotFoundError(HTTPException):
+    def __init__(self, assessment_id: str):
+        super().__init__(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Compliance assessment {assessment_id} not found",
+        )
+
+
 class TransactionBlockedError(HTTPException):
     def __init__(self, reason: str):
         super().__init__(

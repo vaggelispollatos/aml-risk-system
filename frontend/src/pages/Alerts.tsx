@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '../services/api'
-import type { Alert } from '../types'
+import type { Alert, ComplianceAssessment } from '../types'
 
 export default function Alerts() {
   const [severityFilter, setSeverityFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [assessments, setAssessments] = useState<Record<string, ComplianceAssessment>>({})
   const queryClient = useQueryClient()
 
   const { data: alerts = [], isLoading } = useQuery<Alert[]>({
@@ -17,6 +18,13 @@ export default function Alerts() {
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch(`/alerts/${id}`, { status, reviewed_by: 'compliance@company.com' }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['alerts'] }),
+  })
+
+  const assessMutation = useMutation({
+    mutationFn: (alertId: string) =>
+      api.post<ComplianceAssessment>(`/compliance/alerts/${alertId}/assess`).then(r => r.data),
+    onSuccess: assessment =>
+      setAssessments(prev => ({ ...prev, [assessment.alert_id]: assessment })),
   })
 
   const filtered = alerts.filter(a => {
@@ -124,45 +132,109 @@ export default function Alerts() {
                 </p>
               </div>
 
-              {a.status === 'open' && (
-                <div className="flex gap-2 ml-4 flex-shrink-0">
-                  <button
-                    onClick={() => reviewMutation.mutate({ id: a.id, status: 'resolved' })}
-                    disabled={reviewMutation.isPending}
-                    className="px-3 py-1.5 bg-green-800 hover:bg-green-700 text-green-200 rounded text-xs font-medium transition-colors disabled:opacity-50"
-                  >
-                    Resolve
-                  </button>
-                  <button
-                    onClick={() => reviewMutation.mutate({ id: a.id, status: 'false_positive' })}
-                    disabled={reviewMutation.isPending}
-                    className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-medium transition-colors disabled:opacity-50"
-                  >
-                    False Positive
-                  </button>
-                  <button
-                    onClick={() => reviewMutation.mutate({ id: a.id, status: 'escalated' })}
-                    disabled={reviewMutation.isPending}
-                    className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-red-200 rounded text-xs font-medium transition-colors disabled:opacity-50"
-                  >
-                    Escalate
-                  </button>
-                </div>
-              )}
+              <div className="flex flex-col items-end gap-2 ml-4 flex-shrink-0">
+                {a.status === 'open' && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => reviewMutation.mutate({ id: a.id, status: 'resolved' })}
+                      disabled={reviewMutation.isPending}
+                      className="px-3 py-1.5 bg-green-800 hover:bg-green-700 text-green-200 rounded text-xs font-medium transition-colors disabled:opacity-50"
+                    >
+                      Resolve
+                    </button>
+                    <button
+                      onClick={() => reviewMutation.mutate({ id: a.id, status: 'false_positive' })}
+                      disabled={reviewMutation.isPending}
+                      className="px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-gray-300 rounded text-xs font-medium transition-colors disabled:opacity-50"
+                    >
+                      False Positive
+                    </button>
+                    <button
+                      onClick={() => reviewMutation.mutate({ id: a.id, status: 'escalated' })}
+                      disabled={reviewMutation.isPending}
+                      className="px-3 py-1.5 bg-red-900 hover:bg-red-800 text-red-200 rounded text-xs font-medium transition-colors disabled:opacity-50"
+                    >
+                      Escalate
+                    </button>
+                  </div>
+                )}
 
-              {a.status !== 'open' && (
-                <div className="ml-4 flex-shrink-0">
+                {a.status !== 'open' && (
                   <span className="text-gray-500 text-xs">
                     {a.status === 'resolved' ? '✓ Resolved' :
                      a.status === 'escalated' ? '⬆ Escalated' :
                      a.status === 'false_positive' ? '✗ False Positive' : ''}
                   </span>
-                </div>
-              )}
+                )}
+
+                <button
+                  onClick={() => assessMutation.mutate(a.id)}
+                  disabled={assessMutation.isPending}
+                  className="px-3 py-1.5 bg-indigo-900 hover:bg-indigo-800 text-indigo-200 rounded text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  {assessments[a.id] ? 'Re-run Legal Opinion' : 'Get Legal Opinion'}
+                </button>
+              </div>
             </div>
+
+            {assessments[a.id] && (
+              <ComplianceOpinionPanel assessment={assessments[a.id]} />
+            )}
           </div>
         ))}
       </div>
+    </div>
+  )
+}
+
+function ComplianceOpinionPanel({ assessment }: { assessment: ComplianceAssessment }) {
+  const actionLabels: Record<string, string> = {
+    close_no_action: 'Close — no further action required',
+    enhanced_monitoring: 'Continue enhanced monitoring',
+    enhanced_due_diligence: 'Perform Enhanced Due Diligence (EDD)',
+    file_sar: 'File a Suspicious Activity Report (SAR)',
+    block_and_file_ofac_report: 'Block assets and file an OFAC blocked-property report',
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-gray-800 space-y-3">
+      <div className="flex items-center gap-2">
+        <span className="text-indigo-300 text-xs font-semibold uppercase tracking-wide">
+          Compliance Officer Agent
+        </span>
+        <span className="text-gray-500 text-xs">
+          confidence {Math.round(assessment.confidence * 100)}%
+        </span>
+      </div>
+
+      <p className="text-white text-sm font-medium">
+        {actionLabels[assessment.recommended_action] || assessment.recommended_action}
+      </p>
+
+      <div className="flex flex-wrap gap-2 text-xs">
+        {assessment.regulatory_citations.map(c => (
+          <span
+            key={c.statute}
+            title={c.requirement}
+            className="px-2 py-1 rounded bg-gray-800 text-gray-300 border border-gray-700"
+          >
+            {c.statute}
+          </span>
+        ))}
+      </div>
+
+      {(assessment.sar_filing_deadline || assessment.ofac_report_deadline) && (
+        <p className="text-yellow-400 text-xs">
+          {assessment.ofac_report_deadline &&
+            `OFAC report due ${new Date(assessment.ofac_report_deadline).toLocaleDateString()}. `}
+          {assessment.sar_filing_deadline &&
+            `SAR filing due ${new Date(assessment.sar_filing_deadline).toLocaleDateString()}.`}
+        </p>
+      )}
+
+      <pre className="text-gray-400 text-xs whitespace-pre-wrap font-sans bg-gray-950 rounded-lg p-3 border border-gray-800">
+        {assessment.narrative}
+      </pre>
     </div>
   )
 }

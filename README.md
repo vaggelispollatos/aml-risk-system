@@ -6,8 +6,8 @@ A production-grade Anti-Money Laundering (AML) risk scoring engine that processe
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104-green)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue)
 ![React](https://img.shields.io/badge/React-18-blue)
-![Coverage](https://img.shields.io/badge/Coverage-94%25-brightgreen)
-![Tests](https://img.shields.io/badge/Tests-66%20passing-brightgreen)
+![Coverage](https://img.shields.io/badge/Coverage-95%25-brightgreen)
+![Tests](https://img.shields.io/badge/Tests-84%20passing-brightgreen)
 
 ## Overview
 
@@ -26,9 +26,12 @@ Transaction → Rule Engine → Risk Score → Alert Generation → Dashboard Re
   - KYC status verification
 - **Risk Scoring** — weighted algorithm producing 0-100 risk scores
 - **Alert Workflow** — open → in review → resolved/escalated/false positive
+- **Compliance Officer Agent** — automated legal/regulatory opinion per alert:
+  regulatory citations (BSA, OFAC, FinCEN, CDD/CIP), a recommended action
+  (monitor, EDD, file SAR, block & report to OFAC), computed filing deadlines,
+  and a narrative memo for human sign-off
 - **Real-time Dashboard** — live stats, transactions, alerts, customer profiles
 - **REST API** — full OpenAPI/Swagger documentation
-- **94% Test Coverage** — 66 tests (unit + integration + endpoint)
 - **Kubernetes Ready** — HPA auto-scaling, health probes, resource limits
 
 ## Tech Stack
@@ -157,6 +160,14 @@ Coverage report is generated at `backend/htmlcov/index.html`.
 | GET | /api/v1/alerts/{id} | Get alert |
 | PATCH | /api/v1/alerts/{id} | Review alert |
 
+### Compliance Officer Agent
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | /api/v1/compliance/alerts/{alert_id}/assess | Run the agent against an alert, persist the opinion |
+| GET | /api/v1/compliance/alerts/{alert_id}/assessment | Get the latest opinion for an alert |
+| GET | /api/v1/compliance/assessments | List opinions (filter by action, risk level, customer) |
+| GET | /api/v1/compliance/assessments/{id} | Get a single opinion |
+
 ## AML Rules
 
 | Rule | Severity | Weight | Description |
@@ -166,6 +177,30 @@ Coverage report is generated at `backend/htmlcov/index.html`.
 | Geographic Anomaly | High | 20% | Impossible travel between transactions |
 | Sanctions Check | Critical | 25% | Customer on OFAC sanctions list |
 | KYC Verification | Medium | 10% | Customer KYC not approved |
+
+## Compliance Officer Agent
+
+A deterministic, rules-based legal/regulatory engine (`app/services/compliance_officer_agent.py`)
+that reviews a triggered alert and produces a compliance opinion a human BSA/AML
+or legal officer can sign off on:
+
+- **Regulatory citations** — maps each triggered rule to the relevant statute
+  (Bank Secrecy Act, CTR/SAR requirements, anti-structuring statute, OFAC
+  regulations, CIP/CDD rules)
+- **Recommended action** — `close_no_action`, `enhanced_monitoring`,
+  `enhanced_due_diligence`, `file_sar`, or `block_and_file_ofac_report`,
+  derived from alert severity, customer risk level, KYC status, and sanctions
+  status
+- **Filing deadlines** — a 30-calendar-day SAR filing deadline and a
+  10-business-day OFAC blocked-property report deadline, computed automatically
+  when applicable
+- **Narrative memo** — a plain-language compliance memorandum citing the
+  regulatory basis, with an explicit disclaimer that the opinion requires
+  human review before any filing is made
+
+The agent is intentionally rule-based rather than LLM-based so every opinion
+is explainable, reproducible, and auditable. Trigger it from the Alerts
+dashboard ("Get Legal Opinion") or via `POST /api/v1/compliance/alerts/{id}/assess`.
 
 ## Kubernetes Deployment
 

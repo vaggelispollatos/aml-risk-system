@@ -45,3 +45,28 @@ export interface Alert {
   action_taken?: string
   created_at: string
 }
+
+export interface RegulatoryCitation {
+  statute: string
+  requirement: string
+}
+
+export interface ComplianceAssessment {
+  id: string
+  alert_id: string
+  customer_id: string
+  legal_risk_level: 'low' | 'medium' | 'high' | 'critical'
+  recommended_action:
+    | 'close_no_action'
+    | 'enhanced_monitoring'
+    | 'enhanced_due_diligence'
+    | 'file_sar'
+    | 'block_and_file_ofac_report'
+  regulatory_citations: RegulatoryCitation[]
+  narrative: string
+  confidence: number
+  sar_filing_deadline?: string
+  ofac_report_deadline?: string
+  agent_version: string
+  created_at: string
+}
